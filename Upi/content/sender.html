@@ -1,0 +1,38 @@
+﻿<html>
+
+<body>
+    <h1>UPI User</h1>
+    <script src="https://cdn.jsdelivr.net/npm/axios/dist/axios.min.js"></script>
+    <div>
+        <input type="text" id="upireference" name="upireference">
+        <br />
+        <br />
+        <button type="button" onclick="onSend('success')">Approve</button>
+        <span>  </span>
+        <button type="button" onclick="onSend('failed')">Reject</button>
+    </div>
+    <script>
+        // vscode test
+        //### send
+        //POST http://localhost:7071/api/sendmessage
+
+        //{
+        //    "response" : "success"
+        //}
+
+        function onSend(response) {
+            axios.post(window.location.origin +'/api/sendmessage', {
+                response: response,
+                id: document.getElementById("upireference").value
+            })
+                .then(function (response) {
+                    console.log(response);
+                })
+                .catch(function (error) {
+                    console.log(error);
+                });
+        }
+    </script>
+</body>
+
+</html>
