@@ -10,6 +10,8 @@
         <span>UPI Reference: </span><span id="upireference"></span><span>   </span><button type="button" onclick="onCopy()">Copy</button>
     </div>
     <div id="payinit">
+        <input type="text" id="upiamount" name="upiamount" value="2000">
+        <br />
         <input type="text" id="upiaddress" name="upiaddress" value="test@hdfcbank">
         <button type="button" onclick="pay()">Pay</button>
     </div>
@@ -17,38 +19,39 @@
     <div id="payfailed" style="visibility:hidden;font-size:150px; text-align:center">Failed</div>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/microsoft-signalr/6.0.3/signalr.min.js"></script>
     <script>
-        const id = uuidv4();
-        document.getElementById("upireference").innerHTML = id;
-        const apiBaseUrl = window.location.origin;
-        const connection = new signalR.HubConnectionBuilder()
-            .withUrl(apiBaseUrl + '/api?id=' + id, {
-                headers: { "prvangap-id": id }
-            })
-            .configureLogging(signalR.LogLevel.Information)
-            .build();
-        connection.on('onPaymentStatus', (message, connectioncount) => {
-            console.log(message);
-            console.log(connectioncount);
-            connection.stop();
-            document.getElementById('payinit').style.visibility = 'hidden'
-            document.getElementById('timer').style.visibility = 'hidden'
-            if (message === "success") {
-                document.getElementById('paysuccess').style.visibility = 'visible'
-                document.getElementById('payfailed').style.visibility = 'hidden'
-            } else {
-                document.getElementById('paysuccess').style.visibility = 'hidden'
-                document.getElementById('payfailed').style.visibility = 'visible'
-            }
-        });
-
-        connection.start()
-            .catch(console.error);
-
         function pay() {
             document.getElementById('payinit').style.visibility = 'hidden'
             document.getElementById('timer').style.visibility = 'visible'
             document.getElementById('paysuccess').style.visibility = 'hidden'
             document.getElementById('payfailed').style.visibility = 'hidden'
+
+            const id = uuidv4();
+            document.getElementById("upireference").innerHTML = id;
+            const apiBaseUrl = window.location.origin;
+            const connection = new signalR.HubConnectionBuilder()
+                .withUrl(apiBaseUrl + '/api?id=' + id, {
+                    headers: { "prvangap-id": id, "x-amount": document.getElementById("upiamount").value}
+                })
+                .configureLogging(signalR.LogLevel.Information)
+                .build();
+            connection.on('onPaymentStatus', (message, connectioncount) => {
+                console.log(message);
+                console.log(connectioncount);
+                connection.stop();
+                document.getElementById('payinit').style.visibility = 'hidden'
+                document.getElementById('timer').style.visibility = 'hidden'
+                if (message === "success") {
+                    document.getElementById('paysuccess').style.visibility = 'visible'
+                    document.getElementById('payfailed').style.visibility = 'hidden'
+                } else {
+                    document.getElementById('paysuccess').style.visibility = 'hidden'
+                    document.getElementById('payfailed').style.visibility = 'visible'
+                }
+            });
+
+            connection.start()
+                .catch(console.error);
+
             var countDownDate = new Date().getTime() + 5 * 60000;
             var downloadTimer = setInterval(function () {
                 var now = new Date().getTime();
@@ -57,7 +60,7 @@
                 var minutes = Math.floor((distance % (1000 * 60 * 60)) / (1000 * 60));
                 var seconds = Math.floor((distance % (1000 * 60)) / 1000);
 
-                document.getElementById("countdown").innerHTML = minutes + ":" + seconds.toString().padStart(2, "0");;
+                document.getElementById("countdown").innerHTML = minutes.toString().padStart(2, "0") + ":" + seconds.toString().padStart(2, "0");
 
                 if (distance < 0) {
                     clearInterval(downloadTimer);

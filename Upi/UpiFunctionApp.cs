@@ -8,9 +8,8 @@ using Microsoft.AspNetCore.Http;
 using Newtonsoft.Json;
 using Microsoft.Azure.WebJobs.Extensions.SignalRService;
 using System.Collections.Generic;
-using Microsoft.Azure.WebJobs.Extensions.EventGrid;
-using Azure.Messaging.EventGrid;
 using Newtonsoft.Json.Linq;
+using System.Linq;
 
 namespace FunctionApp1
 {
@@ -49,6 +48,11 @@ namespace FunctionApp1
            [SignalRConnectionInfo(HubName = HubName, UserId = "{headers.prvangap-id}")] SignalRConnectionInfo connectionInfo)
         {
             var id = req.Query["id"];
+            if (req.Headers.TryGetValue("x-amount", out var amountHeader))
+            {
+                //use the id and amount to talk to provider
+                var amount = amountHeader.First();
+            }
             _connections.Add(id, DateTime.UtcNow);
             return connectionInfo;
         }
