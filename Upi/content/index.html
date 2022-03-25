@@ -3,6 +3,8 @@
 <body>
     <h1>UPI Merchant</h1>
     <div id="timer" style="visibility:hidden">
+        <span style="font-size:50px; text-align:center" id="countdownexpire">Request expires in</span>
+        <br />
         <span style="font-size:150px; text-align:center" id="countdown"></span>
         <br />
         <span>UPI Reference: </span><span id="upireference"></span><span>   </span><button type="button" onclick="onCopy()">Copy</button>
@@ -24,7 +26,9 @@
             })
             .configureLogging(signalR.LogLevel.Information)
             .build();
-        connection.on('newMessage', (message) => {
+        connection.on('onPaymentStatus', (message, connectioncount) => {
+            console.log(message);
+            console.log(connectioncount);
             connection.stop();
             document.getElementById('payinit').style.visibility = 'hidden'
             document.getElementById('timer').style.visibility = 'hidden'
@@ -58,6 +62,7 @@
                 if (distance < 0) {
                     clearInterval(downloadTimer);
                     document.getElementById("countdown").innerHTML = "Expired";
+                    connection.stop();
                 }
 
             }, 1000);

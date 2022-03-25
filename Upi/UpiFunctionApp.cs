@@ -8,13 +8,18 @@ using Microsoft.AspNetCore.Http;
 using Newtonsoft.Json;
 using Microsoft.Azure.WebJobs.Extensions.SignalRService;
 using System.Collections.Generic;
+using Microsoft.Azure.WebJobs.Extensions.EventGrid;
+using Azure.Messaging.EventGrid;
+using Newtonsoft.Json.Linq;
 
 namespace FunctionApp1
 {
-    public class UpiFunctionApp : ServerlessHub
+    public class UpiFunctionApp
     {
-        private readonly static HashSet<string> _connections =
-           new HashSet<string>();
+        private const string HubName = "upi";
+        private readonly static Dictionary<string, DateTime> _connections =
+           new Dictionary<string, DateTime>();
+        private static readonly object lockObject = new object();
 
         [FunctionName("index")]
         public static IActionResult GetHomePage([HttpTrigger(AuthorizationLevel.Anonymous)] HttpRequest req, ExecutionContext context)
@@ -41,46 +46,124 @@ namespace FunctionApp1
         [FunctionName("negotiate")]
         public static SignalRConnectionInfo Negotiate(
            [HttpTrigger(AuthorizationLevel.Anonymous)] HttpRequest req,
-           [SignalRConnectionInfo(HubName = "upi", UserId = "{headers.prvangap-id}")] SignalRConnectionInfo connectionInfo)
+           [SignalRConnectionInfo(HubName = HubName, UserId = "{headers.prvangap-id}")] SignalRConnectionInfo connectionInfo)
         {
             var id = req.Query["id"];
-            _connections.Add(id);
+            _connections.Add(id, DateTime.UtcNow);
             return connectionInfo;
         }
 
+        //[FunctionName(nameof(OnConnected))]
+        //public async Task OnConnected([SignalRTrigger] InvocationContext invocationContext)
+        //{
+        //    invocationContext.Headers.TryGetValue("Authorization", out var auth);
+        //}
+
+        //[FunctionName(nameof(OnDisconnected))]
+        //public void OnDisconnected([SignalRTrigger] InvocationContext invocationContext)
+        //{
+        //    if (invocationContext.Headers.TryGetValue("prvangap-id", out var headerId))
+        //    {
+        //        if (_connections.TryGetValue(headerId, out string id))
+        //        {
+        //            _connections.Remove(id);
+        //        }
+        //    }
+        //}
+
+        //[FunctionName("onconnected")]
+        //public static void EventGridTest([EventGridTrigger] EventGridEvent eventGridEvent,
+        //   [SignalR(HubName = HubName)] IAsyncCollector<SignalRMessage> signalRMessages)
+        //{
+        //    var message = eventGridEvent.Data.ToObjectFromJson<SignalREvent>();
+        //    var connected = eventGridEvent.EventType == "Microsoft.SignalRService.ClientConnectionConnected";
+        //    if (!connected)
+        //    {
+        //        if (_connections.TryGetValue(message.UserId, out string id))
+        //        {
+        //            _connections.Remove(id);
+        //        }
+        //    }
+        //}
+
         [FunctionName("sendmessage")]
-        public static Task SendMessage(
-        [HttpTrigger(AuthorizationLevel.Anonymous, "post")] HttpRequest req,
-        [SignalR(HubName = "upi")] IAsyncCollector<SignalRMessage> signalRMessages)
+        public static async Task<IActionResult> SendMessage(
+            [HttpTrigger(AuthorizationLevel.Anonymous, "post")] HttpRequest req,
+            [SignalR(HubName = HubName)] IAsyncCollector<SignalRMessage> signalRMessages)
         {
             try
             {
                 var content = new StreamReader(req.Body).ReadToEnd();
                 var data = JsonConvert.DeserializeObject<Data>(content);
-                if (_connections.TryGetValue(data.Id, out string id))
+                if (_connections.ContainsKey(data.Id))
                 {
-                    return signalRMessages.AddAsync(
+                    await signalRMessages.AddAsync(
                         new SignalRMessage
                         {
-                            // the message will only be sent to these user IDs
-                            UserId = id,
-                            Target = "newMessage",
-                            Arguments = new[] { data.Response }
+                            UserId = data.Id,
+                            Target = "onPaymentStatus",
+                            Arguments = new[] { data.Response, _connections.Count.ToString() }
                         });
+
+                    var successResult = new ObjectResult(data.Id)
+                    {
+                        StatusCode = StatusCodes.Status202Accepted
+                    };
+
+                    lock (lockObject)
+                    {
+                        _connections.Remove(data.Id);
+                    }
+                    return successResult;
                 }
 
-                return Task.FromResult<Data>(new Data { Response = "failed" });
+                var notFoundResult = new ObjectResult(data.Id)
+                {
+                    StatusCode = StatusCodes.Status404NotFound
+                };
+
+                return notFoundResult;
             }
             catch (Exception ex)
             {
-                return Task.FromResult<object>(null);
+                var internalErrorResult = new ObjectResult(ex.Message)
+                {
+                    StatusCode = StatusCodes.Status500InternalServerError
+                };
+
+                return internalErrorResult;
             }
         }
+
+        [FunctionName("cleanuptimer")]
+        public static void CleanupTimer([TimerTrigger("0 */5 * * * *")] TimerInfo myTimer)
+        {
+            var currentDateTime = DateTime.UtcNow;
+            foreach (var item in _connections)
+            {
+                if ((currentDateTime - item.Value).TotalMinutes > 5)
+                {
+                    lock (lockObject)
+                    {
+                        _connections.Remove(item.Key);
+                    }
+                }
+            }
+        }
+
 
         public class Data
         {
             public string Response { get; set; }
             public string Id { get; set; }
+        }
+
+        public class SignalREvent
+        {
+            public DateTime Timestamp { get; set; }
+            public string HubName { get; set; }
+            public string ConnectionId { get; set; }
+            public string UserId { get; set; }
         }
     }
 }
